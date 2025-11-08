@@ -2,6 +2,10 @@
 
 ## Task 1
 
+### Compilation
+
+Run `make` to compile the task1 C++ file.
+
 ### Hash table
 
 To have hash table, I use hash function modulo the size of the table. However, since modulo can create more hash collisions (hash function should only collide for the same input without hash - i.e. iff key1 == key2, then hash(key1) == hash(key2)), we need to handle the case where different keys would have the same hash.
