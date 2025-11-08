@@ -15,3 +15,32 @@ Insert / Remove / Get are O(1) complexity if the key does not collide with other
 To have O(1) access of the least recent and last modification, I implemented a doubly linked list. In this list, the ends are the ones pointed to by the earliest / latest pointers, and the other nodes are accessible simply by the pointers stored in the hash table.
 
 Removing the item from this list is simply reconnecting the neighbors, and similarly is reconnecting the item as the last modified where only the latest neighbors are added.
+
+## Task 2
+
+### Assumptions
+
+1. There was no symbol specified for the GET request, i.e. there was no trade from-to specified. Therefore I picket BTC to USDT.
+2. Stream of trades means endlessly many trades 
+
+### Parsing speed
+
+Single trade parsing is just python dictionary item access which is O(1). After printing all the times for each trade, I did confirm that they all take the same amount of time (within 1e-07s from each other).
+
+### Implementation
+
+#### One shot (repeated) REST API
+
+First implementation is using GET endpoint shown in the assignment description. This GET request returns a batch of trades, which then are parsed one by one. To create a stream, a while loop is run in which GET request is repeated.
+
+#### Stream receive using WebSocket
+
+Second implementation is using WebSocket API described in [Aggregate Trade Streams API](https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Aggregate-Trade-Streams). This allows us to repeatedly call `recv()` on the websocket and therefore get one trade at a time.
+
+This approach is cleaner as we do not need to parse more trades in one batch, or send many requests, since websocket is already connected to the endpoint.
+
+#### Options and defaults
+
+I implemented a selection between the stream implementations using `--oneshot` option, which selects the REST API approach. By default (if no option is provided), the script runs the WebSocket approach.
+
+Next, I implemented iterations limitting using `--iterations=` option, which by default is -1 to run endlessly. If specified, the script will run up to the number of iterations provided.
