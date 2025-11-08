@@ -21,7 +21,8 @@ Removing the item from this list is simply reconnecting the neighbors, and simil
 ### Assumptions
 
 1. There was no symbol specified for the GET request, i.e. there was no trade from-to specified. Therefore I picket BTC to USDT.
-2. Stream of trades means endlessly many trades 
+2. Stream of trades means endlessly many trades
+3. The user is able to set up a python environment (required for python 3.12 and above) and do `pip install requests websocket-client`.
 
 ### Parsing speed
 
