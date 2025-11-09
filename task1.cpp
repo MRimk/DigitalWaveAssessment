@@ -1,171 +1,77 @@
-#include <string>
 #include <functional>
-#include <vector>
-#include <memory>
-#include <stdexcept>
 #include <iostream>
+#include <curl/curl.h>
+#include "QuickHashMap.hpp"
 
-struct OrderList {
-	std::string word;
-	int value;
-	OrderList* prev;
-	OrderList* next;
 
-	OrderList(const std::string& w, int v) : word(w), value(v), prev(nullptr), next(nullptr) {}
+const std::string BOOK_URL = "https://www.gutenberg.org/files/98/98-0.txt";
 
+struct CurlContext {
+    QuickHashMap* map;
+    std::string leftover;
 };
 
-class QuickHashMap {
-public:
-    explicit QuickHashMap(size_t size);
+static void handleWord(QuickHashMap* map, const std::string& word){
+    int curr = map->get(word);
+    map->insert(word, curr + 1);
+    std::cout << "WORD: " << word << ", current: " << curr << '\n';
+}
 
-    void insert(const std::string& key, int value);
-    void remove(const std::string& key);
-    int get(const std::string& key) const;
+static size_t write_to_stream(void *ptr, size_t size, size_t nmemb, void *u_data) {
+    const size_t total = size * nmemb;
+    const char*  data  = static_cast<const char*>(ptr);
 
-    std::string getLast() const;
-    std::string getEarliest() const;
+    CurlContext* ctx = static_cast<CurlContext*>(u_data); // unpack context
 
-private:
-    // linear-probe until we find key or first reusable slot.
-    size_t probe(const std::string& key, bool& found) const;
-
-    // detach a node from the doubly-linked list.
-    void detach(OrderList* node);
-
-    // update node to the latest of the usage list.
-    void makeLatest(OrderList* node);
-
-    std::hash<std::string>                 _hasher;
-    const size_t                           _size;
-
-    std::vector<std::shared_ptr<OrderList>> _array;
-    std::vector<bool> _tombstone; // list of slots that can be used
-
-    OrderList* _latest   {nullptr}; // most recently touched
-    OrderList* _earliest {nullptr}; // least recently touched
-};
-
-
-QuickHashMap::QuickHashMap(size_t size)
-    : _size(size),
-      _array(size, nullptr),
-      _tombstone(size, false) {}
-
-size_t QuickHashMap::probe(const std::string& key, bool& found) const {
-    size_t start = _hasher(key) % _size;
-    size_t firstEmpty = SIZE_MAX; // to compare first reusable slot
-
-	// set found if the key already exists
-    found = false;
-
-    for (size_t i = 0; i < _size; ++i) {
-		// circular traverse
-        size_t idx = (start + i) % _size;
-
-        if (_array[idx]) {
-			// if key already exists
-            if (_array[idx]->word == key) {
-                found = true;
-                return idx; 
-            }
+    for (size_t i = 0; i < total; ++i) {
+        char c = data[i];
+        // build word
+        if (std::isalpha(static_cast<unsigned char>(c))) {
+            ctx->leftover.push_back(static_cast<char>(std::tolower(c)));
         } else {
-            // remember the first reusable spot (empty or tombstone)
-            if (firstEmpty == SIZE_MAX) firstEmpty = idx;
-            if (!_tombstone[idx]) break; // key won't appear beyond here, so stop
+            // apply action on word
+            if (!ctx->leftover.empty()) {
+                handleWord(ctx->map, ctx->leftover);
+                ctx->leftover.clear();
+            }
         }
     }
-
-    if (firstEmpty == SIZE_MAX)
-        throw std::overflow_error("QuickHashMap is full");
-
-    return firstEmpty; // key absent
+    return total;                         
 }
 
-void QuickHashMap::detach(OrderList* node) {
-    if (!node) return;
+// using the tutorial from libcurl: https://curl.se/libcurl/c/CURLOPT_WRITEFUNCTION.html
+void downloadText(QuickHashMap* wordFrequencies){
+    CURL *curl;
 
-	// connect neighbors
-    if (node->prev) node->prev->next = node->next;
-    if (node->next) node->next->prev = node->prev;
-
-	// update quick access
-    if (_earliest == node) _earliest = node->next;
-    if (_latest == node) _latest = node->prev;
-}
-
-void QuickHashMap::makeLatest(OrderList* node) {
-    if (!node || _latest == node) return;
-
-	// first insertion
-    if (!_latest) {
-        _latest = _earliest = node;
-        node->prev = node->next = nullptr;
+    CurlContext ctx {wordFrequencies, {}};
+ 
+    CURLcode res = curl_global_init(CURL_GLOBAL_ALL);
+    if(res)
         return;
+    
+    curl = curl_easy_init();
+    if(curl) {
+        curl_easy_setopt(curl, CURLOPT_URL, BOOK_URL.c_str());
+        curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_to_stream);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &ctx);   
+    
+        /* Perform the request, res gets the return code */
+        res = curl_easy_perform(curl);
+        /* Check for errors */
+        if(res != CURLE_OK)
+        fprintf(stderr, "curl_easy_perform() failed: %s\n",
+                curl_easy_strerror(res));
+    
+        /* always cleanup */
+        curl_easy_cleanup(curl);
     }
+    curl_global_cleanup();
 
-    // if already somewhere in list, detach first.
-    detach(node);
-
-    // append after current latest
-    node->prev     = _latest;
-    node->next     = nullptr;
-    _latest->next  = node;
-    _latest        = node;
-}
-
-void QuickHashMap::insert(const std::string& key, int value) {
-    bool found = false;
-    size_t pos = probe(key, found);
-
-    std::shared_ptr<OrderList> node;
-
-    if (found) {
-        // update existing
-        node = _array[pos];
-        node->value = value;
-    } else {
-        // create new
-        node = std::make_shared<OrderList>(key, value);
-        _array[pos] = node;
-        _tombstone[pos] = false;
-    }
-
-    makeLatest(node.get());
-}
-
-void QuickHashMap::remove(const std::string& key) {
-    bool found = false;
-    size_t pos = probe(key, found);
-    if (!found) return;
-
-    std::shared_ptr<OrderList> item = _array[pos];
-
-    // unlink from usage list first
-    detach(item.get());
-
-    _array[pos].reset();
-    _tombstone[pos] = true;
-
-    // if list became empty
-    if (!_latest) _earliest = nullptr;
-}
-
-int QuickHashMap::get(const std::string& key) const {
-    bool found = false;
-    size_t pos = probe(key, found);
-    return found ? _array[pos]->value : -1;
-}
-
-std::string QuickHashMap::getLast() const {
-    return _latest ? _latest->word : "";
-}
-
-std::string QuickHashMap::getEarliest() const {
-    return _earliest ? _earliest->word : "";
 }
 
 int main() {
+#ifdef QUICK_TEST
     QuickHashMap map(300);
     map.insert("hello", 1);
     map.insert("world", 2);
@@ -179,4 +85,8 @@ int main() {
 
     map.remove("world");
     std::cout << "after remove(world), getFirst : " << map.getEarliest() << '\n'; // foo
+#else
+    QuickHashMap wordMap(10'000);
+    downloadText(&wordMap);
+#endif
 }

@@ -4,9 +4,13 @@
 
 ### Compilation
 
-Run `make` to compile the task1 C++ file.
+**Requirement**: please install `libcurl4-openssl-dev` to use curl in C++ and download the textfile that is then parsed.
 
-### Hash table
+Run `make all` to compile the task1 C++ file. This will compile the code that runs and downloads the provided textfile, and uses it to fill the hashmap.
+
+To test the task1, I wrote a small test in `main()` function that can be compiled with `make test`. It's quite rudimentary but it shows the hashmap functionality.
+
+### Hash table (QuickHashMap.hpp)
 
 To have hash table, I use hash function modulo the size of the table. However, since modulo can create more hash collisions (hash function should only collide for the same input without hash - i.e. iff key1 == key2, then hash(key1) == hash(key2)), we need to handle the case where different keys would have the same hash.
 
@@ -19,6 +23,10 @@ Insert / Remove / Get are O(1) complexity if the key does not collide with other
 To have O(1) access of the least recent and last modification, I implemented a doubly linked list. In this list, the ends are the ones pointed to by the earliest / latest pointers, and the other nodes are accessible simply by the pointers stored in the hash table.
 
 Removing the item from this list is simply reconnecting the neighbors, and similarly is reconnecting the item as the last modified where only the latest neighbors are added.
+
+### Text download
+
+I implemented the text download from the given URL (https://www.gutenberg.org/files/98/98-0.txt) using curl in C++. I had never used it in code before, but since I knew its behaviour in CLI, I figured I would learn by following a tutorial and using it here. I have linked a tutorial in the code, but expanded it to include the stream word parsing and putting those words in the hashmap.
 
 ## Task 2
 
